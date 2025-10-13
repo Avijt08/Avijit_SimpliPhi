@@ -22,9 +22,14 @@ class Config:
     # Backend URL
     BACKEND_URL = f"http://{API_HOST}:{API_PORT}"
     
-    # Google Gemini API configuration
+    # Google Gemini API configuration (fallback)
     GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
     GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
+    
+    # OpenRouter API configuration (primary)
+    OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
+    OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "anthropic/claude-3.5-sonnet")
+    OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
     
     # ChromaDB configuration
     CHROMADB_PERSIST_DIR = os.getenv("CHROMADB_PERSIST_DIR", "./chromadb")
@@ -48,6 +53,9 @@ API_PORT = Config.API_PORT
 BACKEND_URL = Config.BACKEND_URL
 GOOGLE_API_KEY = Config.GOOGLE_API_KEY
 GEMINI_MODEL = Config.GEMINI_MODEL
+OPENROUTER_API_KEY = Config.OPENROUTER_API_KEY
+OPENROUTER_MODEL = Config.OPENROUTER_MODEL
+OPENROUTER_BASE_URL = Config.OPENROUTER_BASE_URL
 CHROMADB_PERSIST_DIR = Config.CHROMADB_PERSIST_DIR
 EMBEDDING_MODEL = Config.EMBEDDING_MODEL
 EMBEDDING_DIMENSION = Config.EMBEDDING_DIMENSION

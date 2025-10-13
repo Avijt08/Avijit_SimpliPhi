@@ -274,7 +274,10 @@ def search_properties(query, price_min=None, price_max=None, property_type=None)
     with st.spinner('🔍 Searching for your perfect property...'):
         try:
             # Prepare request payload
-            payload = {"query": query}
+            payload = {
+                "query": query,
+                "use_ai_response": True  # Enable AI insights by default
+            }
             if price_min is not None:
                 payload["price_min"] = price_min
             if price_max is not None:
@@ -418,6 +421,54 @@ def create_property_map(properties_data):
     except Exception as e:
         st.error(f"Error creating map: {str(e)}")
         return
+
+def get_property_ai_insights(meta):
+    """Generate AI insights for a single property with optimized context"""
+    try:
+        # Create property-specific context
+        property_type = meta.get('type', 'property')
+        price = meta.get('price', 0)
+        bedrooms = meta.get('bedrooms', 0)
+        bathrooms = meta.get('bathrooms', 0)
+        location = meta.get('address', 'unknown location')
+        crime_score = meta.get('crime_score_weight') or meta.get('crime_score')
+        flood_risk = meta.get('flood_risk', 'Unknown')
+        
+        # Create a more specific and focused query for individual property analysis
+        query = f"""Provide specific insights and recommendations for this property:
+        - Type: {property_type}
+        - Price: £{price:,.2f}
+        - Bedrooms: {bedrooms}
+        - Bathrooms: {bathrooms}
+        - Location: {location}
+        - Crime Score: {crime_score if crime_score else 'Not available'}
+        - Flood Risk: {flood_risk}
+        
+        Focus on: investment potential, suitability for different buyers, location benefits, value assessment, and any specific recommendations."""
+        
+        # Use the API for consistent results
+        payload = {
+            "query": query,
+            "use_ai_response": True,
+            "max_results": 1
+        }
+        
+        response = requests.post(
+            "http://127.0.0.1:8000/query",
+            json=payload,
+            timeout=20
+        )
+        
+        if response.status_code == 200:
+            results = response.json()
+            if results.get("ai_response"):
+                return results["ai_response"]
+        
+        return None
+        
+    except Exception as e:
+        print(f"Error getting property AI insights: {e}")
+        return None
 
 def display_property_card(doc, meta):
     """Displays a single property card with safe key access"""
@@ -571,68 +622,40 @@ def display_property_card(doc, meta):
         </div>
     """, unsafe_allow_html=True)
     
-    # Generate AI recommendations based on property data
-    recommendations = []
+    # Check if we have AI insights in session state for this property
+    property_key = f"ai_insights_{hash(str(meta))}"
     
-    # Price analysis
-    price = float(meta.get('price', 0))
-    if price < 200000:
-        recommendations.append("💰 **Great Value**: This property is in an affordable price range, making it an excellent opportunity for first-time buyers or investors.")
-    elif price > 500000:
-        recommendations.append("🏆 **Premium Property**: This is a higher-end property that likely offers superior amenities and location benefits.")
-    
-    # Bedroom analysis
-    bedrooms = int(meta.get('bedrooms', 0))
-    if bedrooms >= 3:
-        recommendations.append("👨‍👩‍👧‍👦 **Family Friendly**: With multiple bedrooms, this property is perfect for families or those needing extra space for home offices.")
-    elif bedrooms == 1:
-        recommendations.append("🎯 **Perfect for Singles/Couples**: This cozy space is ideal for individuals or couples starting out.")
-    
-    # Crime score analysis
-    crime_score = None
-    if meta and "crime_score_weight" in meta and meta["crime_score_weight"] is not None:
-        try:
-            crime_score = float(meta["crime_score_weight"])
-        except (ValueError, TypeError):
-            crime_score = None
-    elif meta and "crime_score" in meta and meta["crime_score"] is not None:
-        try:
-            crime_score = float(meta["crime_score"])
-        except (ValueError, TypeError):
-            crime_score = None
-    
-    if crime_score is not None:
-        if crime_score < 0.4:
-            recommendations.append("🛡️ **Safe Neighborhood**: Low crime score indicates this is a very safe area to live in.")
-        elif crime_score > 0.7:
-            recommendations.append("⚠️ **Security Consideration**: Higher crime score - consider additional security measures.")
-    
-    # Flood risk analysis
-    flood_risk = meta.get('flood_risk', 'N/A')
-    if flood_risk == 'None' or flood_risk == 'Low':
-        recommendations.append("🌊 **Low Flood Risk**: This property has minimal flood risk, providing peace of mind.")
-    
-    # Investment potential
-    if price < 300000 and bedrooms >= 2:
-        recommendations.append("📈 **Investment Potential**: Good price point with multiple bedrooms suggests strong rental potential.")
-    
-    # Location insights
-    address = meta.get('address', '')
-    if any(keyword in address.lower() for keyword in ['centre', 'center', 'city', 'town']):
-        recommendations.append("🏙️ **Prime Location**: Central location offers excellent access to amenities and transport links.")
-    
-    # Display recommendations
-    if recommendations:
-        for i, rec in enumerate(recommendations[:4], 1):  # Limit to 4 recommendations
-            st.markdown(f"""
-                <div style='background: rgba(255, 255, 255, 0.1); padding: 1rem; border-radius: 8px; margin: 0.5rem 0;'>
-                    <p style='color: white; margin: 0; line-height: 1.4;'>{rec}</p>
-                </div>
-            """, unsafe_allow_html=True)
+    if property_key in st.session_state:
+        # Display cached AI insights
+        ai_insights = st.session_state[property_key]
+        st.markdown(f"""
+            <div style='background: white; padding: 1.5rem; border-radius: 10px; margin-bottom: 1rem; border-left: 4px solid #667eea;'>
+                <div style='color: #2c3e50; line-height: 1.6;'>{ai_insights}</div>
+            </div>
+        """, unsafe_allow_html=True)
     else:
+        # Show generate button
+        if st.button(f"💡 Generate AI Insights", key=f"insights_{hash(str(meta))}"):
+            with st.spinner("🧠 Analyzing this property..."):
+                ai_insights = get_property_ai_insights(meta)
+                if ai_insights:
+                    st.session_state[property_key] = ai_insights
+                    st.markdown(f"""
+                        <div style='background: white; padding: 1.5rem; border-radius: 10px; margin-bottom: 1rem; border-left: 4px solid #667eea;'>
+                            <div style='color: #2c3e50; line-height: 1.6;'>{ai_insights}</div>
+                        </div>
+                    """, unsafe_allow_html=True)
+                    st.success("✅ AI insights generated!")
+                    st.rerun()
+                else:
+                    st.error("❌ Could not generate AI insights for this property.")
+        
+        # Show placeholder message
         st.markdown("""
-            <div style='background: rgba(255, 255, 255, 0.1); padding: 1rem; border-radius: 8px; margin: 0.5rem 0;'>
-                <p style='color: white; margin: 0;'>📊 **Analysis Available**: Based on the available data, this property offers good potential. Consider visiting for a personal assessment.</p>
+            <div style='background: #f8f9fa; padding: 1rem; border-radius: 8px; margin: 1rem 0;'>
+                <p style='color: #6c757d; margin: 0; text-align: center;'>
+                    💡 Click the button above to get AI-powered insights about this specific property
+                </p>
             </div>
         """, unsafe_allow_html=True)
 
@@ -964,6 +987,9 @@ with tab1:
     query_params = create_search_form()
     
     if query_params and query_params['query']:
+        # Store the query in session state for AI insights
+        st.session_state.last_query = query_params['query']
+        
         results = search_properties(
             query_params['query'], 
             price_min=query_params['price_min'],
@@ -1088,6 +1114,43 @@ with tab1:
             # Display map view first
             create_property_map(properties_data)
             
+            # AI Insights Control Panel
+            st.markdown("""
+                <div style='background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 1.5rem; border-radius: 10px; margin: 2rem 0;'>
+                    <h3 style='color: white; margin-bottom: 1rem;'>🤖 AI Property Insights Control</h3>
+                </div>
+            """, unsafe_allow_html=True)
+            
+            col1, col2 = st.columns([2, 1])
+            with col1:
+                st.markdown("""
+                    <p style='color: #6c757d; margin: 0;'>
+                        Get personalized AI insights for each property or generate insights for all properties at once.
+                    </p>
+                """, unsafe_allow_html=True)
+            
+            with col2:
+                if st.button("🚀 Generate All AI Insights", key="bulk_insights", help="Generate AI insights for all properties in results"):
+                    progress_bar = st.progress(0)
+                    total_properties = len(results["results"]["metadatas"])
+                    
+                    with st.spinner("🧠 Generating AI insights for all properties..."):
+                        for i, meta in enumerate(results["results"]["metadatas"]):
+                            property_key = f"ai_insights_{hash(str(meta))}"
+                            if property_key not in st.session_state:
+                                # Generate insights for this property
+                                ai_insights = get_property_ai_insights(meta)
+                                if ai_insights:
+                                    st.session_state[property_key] = ai_insights
+                            
+                            # Update progress
+                            progress_bar.progress((i + 1) / total_properties)
+                    
+                    st.success(f"✅ Generated AI insights for {total_properties} properties!")
+                    st.rerun()
+            
+            st.markdown("<br>", unsafe_allow_html=True)
+            
             # Display property cards
             for i, (doc, meta) in enumerate(zip(
                 results["results"]["documents"],
@@ -1097,6 +1160,68 @@ with tab1:
                 property_type = meta.get('type', 'Property') if meta else 'Property'
                 with st.expander(f"🏠 Property {i+1} - {property_type}", expanded=i==0):
                     display_property_card(doc, meta)
+            
+            # Display AI Property Insights
+            if results.get("ai_response"):
+                st.markdown("""
+                    <div style='background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 1.5rem; border-radius: 10px; margin: 2rem 0;'>
+                        <h3 style='color: white; margin-bottom: 1rem;'>🤖 AI Property Insights</h3>
+                    </div>
+                """, unsafe_allow_html=True)
+                
+                with st.container():
+                    st.markdown(f"""
+                        <div style='background: white; padding: 1.5rem; border-radius: 10px; margin-bottom: 1rem; border-left: 4px solid #667eea;'>
+                            <div style='color: #2c3e50; line-height: 1.6;'>{results["ai_response"]}</div>
+                        </div>
+                    """, unsafe_allow_html=True)
+            else:
+                # Show loading message or request AI insights
+                st.markdown("""
+                    <div style='background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 1.5rem; border-radius: 10px; margin: 2rem 0;'>
+                        <h3 style='color: white; margin-bottom: 1rem;'>🤖 AI Property Insights</h3>
+                    </div>
+                """, unsafe_allow_html=True)
+                
+                if st.button("💡 Generate AI Insights", key="generate_insights"):
+                    with st.spinner("🧠 Analyzing properties and generating insights..."):
+                        try:
+                            # Make a new request with AI response enabled
+                            ai_payload = {
+                                "query": st.session_state.get('last_query', ''),
+                                "use_ai_response": True,
+                                "max_results": 5
+                            }
+                            
+                            ai_response = requests.post(
+                                "http://127.0.0.1:8000/query",
+                                json=ai_payload,
+                                timeout=30
+                            )
+                            
+                            if ai_response.status_code == 200:
+                                ai_results = ai_response.json()
+                                if ai_results.get("ai_response"):
+                                    st.markdown(f"""
+                                        <div style='background: white; padding: 1.5rem; border-radius: 10px; margin-bottom: 1rem; border-left: 4px solid #667eea;'>
+                                            <div style='color: #2c3e50; line-height: 1.6;'>{ai_results["ai_response"]}</div>
+                                        </div>
+                                    """, unsafe_allow_html=True)
+                                    st.success("✅ AI insights generated successfully!")
+                                else:
+                                    st.warning("⚠️ AI insights could not be generated at this time.")
+                            else:
+                                st.error("❌ Failed to generate AI insights. Please try again.")
+                        except Exception as e:
+                            st.error(f"❌ Error generating AI insights: {str(e)}")
+                
+                st.markdown("""
+                    <div style='background: #f8f9fa; padding: 1rem; border-radius: 8px; margin: 1rem 0;'>
+                        <p style='color: #6c757d; margin: 0; text-align: center;'>
+                            💡 Click the button above to get AI-powered insights about your search results
+                        </p>
+                    </div>
+                """, unsafe_allow_html=True)
 
 with tab2:
     st.markdown("""

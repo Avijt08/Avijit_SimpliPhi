@@ -151,7 +151,16 @@ async def query_properties(query_request: PropertyQuery):
         ai_response = None
         if use_ai_response and llm_integration and properties:
             try:
-                ai_response = llm_integration.generate_response(query, properties)
+                # Extract metadata from search results for AI processing
+                property_metadata = []
+                for prop in properties:
+                    if isinstance(prop, dict) and 'metadata' in prop:
+                        property_metadata.append(prop['metadata'])
+                    else:
+                        # If it's already a direct property object
+                        property_metadata.append(prop)
+                
+                ai_response = llm_integration.generate_response(query, property_metadata)
             except Exception as e:
                 print(f"Error generating AI response: {e}")
                 ai_response = "I found some properties matching your query, but couldn't generate a detailed response at the moment."
